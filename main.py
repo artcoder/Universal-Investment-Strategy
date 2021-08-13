@@ -6,21 +6,17 @@
 # David Guilbeau
 # Version 0.0.0
 
-import csv
 import datetime
 from datetime import timedelta
 import operator
-import sys
 import pandas as pd
 import yfinance as yf
 import sqlite3
-import math
 import pickle
 import numpy as np
 from sklearn.linear_model import LinearRegression
 # import talib
 import pandas_ta as ta
-# import traceback
 import plotly.express as px
 import plotly.graph_objects as go
 
@@ -129,8 +125,6 @@ def download_stock_data(download_start_date, download_finish_date):
 
     con.commit()
     print("\r                                                    ")
-
-
 #
 
 
@@ -237,9 +231,13 @@ for step in range(0, 11, 1):
 
     portfolio_values = portfolio[step]['close']
 
+    # needs to be an annualized percent
     return_percent = (portfolio_values[-1] - portfolio_values[0]) / portfolio_values[0]
 
-    sharpe_ratio[step] = return_percent / (portfolio_values.std() ** volatility_factor)
+    volatility = portfolio_values.std()
+    # ta.volatility.ulcer_index(close, window=14, fillna=False)
+
+    sharpe_ratio[step] = return_percent / (volatility ** volatility_factor)
     print('return, volatility:', round(return_percent, 3), round(portfolio_values.std(), 3))
     print('sharpe ratio:', round(sharpe_ratio[step], 3))
 
