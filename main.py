@@ -16,8 +16,6 @@ import sqlite3
 import pickle
 import numpy as np
 from sklearn.linear_model import LinearRegression
-# import talib
-# import pandas_ta as ta
 import plotly.express as px
 import plotly.graph_objects as go
 
@@ -26,7 +24,7 @@ pickle_filename = r'.\stock_group_df_0.0.0.pkl'
 download = True
 maximum_trading_days_needed = 300
 volatility_factor = 2
-trading_days_window = 50
+trading_days_window = 70
 
 maximum_calendar_days_needed = maximum_trading_days_needed * 365.25 / 253
 # 253 trading days in a year
@@ -204,7 +202,7 @@ for stock in stock_list:
     # print('first price, last price:', first_day_price, last_day_price)
     # print('absolute return:', last_day_price - first_day_price)
     return_percent = (last_day_price - first_day_price) / first_day_price
-    print('return decimal percent:', return_percent)
+    print('return decimal percent:', round(return_percent, 3))
 
     normalized[stock] = current_stock / first_day_price
 
@@ -213,12 +211,12 @@ for stock in stock_list:
 
     # print(normalized[stock].tail())
 
-    # sharpe_ratio = return_percent / (normalized[stock]['close'].std() ** volatility_factor)
-    sharpe_ratio = return_percent / (volatility ** volatility_factor)
-    print('sharpe ratio:', sharpe_ratio)
+    # performance_ratio = return_percent / (normalized[stock]['close'].std() ** volatility_factor)
+    performance_ratio = return_percent / (volatility ** volatility_factor)
+    print('performance ratio:', round(performance_ratio, 3))
 
 portfolio = {}
-sharpe_ratio = {}
+performance_ratio = {}
 plotly_x = []
 plotly_y1 = []
 plotly_y2 = []
@@ -252,28 +250,28 @@ for step in range(0, 11, 1):
     # print('ui_df:', ui_df)
     volatility = ui_df.iloc[-1]
 
-    sharpe_ratio[step] = return_percent / (volatility ** volatility_factor)
+    performance_ratio[step] = return_percent / (volatility ** volatility_factor)
     print('return, volatility:', round(return_percent, 3), round(volatility, 3))
-    print('sharpe ratio:', round(sharpe_ratio[step], 3))
+    print('performance ratio:', round(performance_ratio[step], 3))
 
     if step == 0:
-        max_value = sharpe_ratio[step]
+        max_value = performance_ratio[step]
         max_step = 0
-    elif max_value < sharpe_ratio[step]:
-        max_value = sharpe_ratio[step]
+    elif max_value < performance_ratio[step]:
+        max_value = performance_ratio[step]
         max_step = step
 
     plotly_x.append(step)
-    plotly_y1.append(sharpe_ratio[step])
+    plotly_y1.append(performance_ratio[step])
     plotly_y2.append(volatility)
 
 # output = sorted(adjusted_slope.items(), key=operator.itemgetter(1), reverse=True)
 
-print('max value of', max_value, 'at step:', max_step)
+print('max value of', round(max_value, 3), 'at step:', max_step)
 print(stock_list[0], max_step * 10, ';', stock_list[1], 100 - max_step * 10)
 
-line1 = px.line(x=plotly_x, y=plotly_y1, title='sharpe ratio')
+line1 = px.line(x=plotly_x, y=plotly_y1, title='performance ratio')
 line2 = px.line(x=plotly_x, y=plotly_y2, title='std')
 figure = go.Figure(data=line1.data + line2.data)
-figure.update_layout(title='sharpe')
+figure.update_layout(title='performance')
 figure.show()
