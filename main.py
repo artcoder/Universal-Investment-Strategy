@@ -11,12 +11,13 @@ from datetime import timedelta
 import operator
 import pandas as pd
 import yfinance as yf
+import ta
 import sqlite3
 import pickle
 import numpy as np
 from sklearn.linear_model import LinearRegression
 # import talib
-import pandas_ta as ta
+# import pandas_ta as ta
 import plotly.express as px
 import plotly.graph_objects as go
 
@@ -25,6 +26,7 @@ pickle_filename = r'.\stock_group_df_0.0.0.pkl'
 download = True
 maximum_trading_days_needed = 300
 volatility_factor = 2
+trading_days_window = 50
 
 maximum_calendar_days_needed = maximum_trading_days_needed * 365.25 / 253
 # 253 trading days in a year
@@ -177,9 +179,11 @@ sql = '''
    Select date, ticker, close From stock_data
    Where ticker in (?, ?)
    Order By date Desc
-   Limit 50
+   Limit ?
    '''
-cur.execute(sql, stock_list)
+sql_arguments = stock_list.copy()
+sql_arguments.append(trading_days_window * len(stock_list))
+cur.execute(sql, sql_arguments)
 stock_df = pd.DataFrame(cur.fetchall(),
                         columns=['date', 'ticker', 'close'])
 stock_df = stock_df.set_index(['ticker', 'date']).sort_index()
@@ -204,9 +208,13 @@ for stock in stock_list:
 
     normalized[stock] = current_stock / first_day_price
 
+    ui_df = ta.volatility.UlcerIndex(current_stock['close'], window=trading_days_window).ulcer_index()
+    volatility = ui_df.iloc[-1]
+
     # print(normalized[stock].tail())
 
-    sharpe_ratio = return_percent / (normalized[stock]['close'].std() ** volatility_factor)
+    # sharpe_ratio = return_percent / (normalized[stock]['close'].std() ** volatility_factor)
+    sharpe_ratio = return_percent / (volatility ** volatility_factor)
     print('sharpe ratio:', sharpe_ratio)
 
 portfolio = {}
@@ -230,15 +238,22 @@ for step in range(0, 11, 1):
     # print(portfolio[step].tail())
 
     portfolio_values = portfolio[step]['close']
+    # print('length:', len(portfolio_values))
+    # print("portfolio[step]['close']:", portfolio[step]['close'])
 
     # needs to be an annualized percent
     return_percent = (portfolio_values[-1] - portfolio_values[0]) / portfolio_values[0]
 
-    volatility = portfolio_values.std()
-    # ta.volatility.ulcer_index(close, window=14, fillna=False)
+    # volatility = portfolio_values.std()
+
+    # p_df = pd.DataFrame(portfolio_values, columns=['close'])
+    # print('p_df:', p_df)
+    ui_df = ta.volatility.UlcerIndex(portfolio[step]['close'], window=trading_days_window).ulcer_index()
+    # print('ui_df:', ui_df)
+    volatility = ui_df.iloc[-1]
 
     sharpe_ratio[step] = return_percent / (volatility ** volatility_factor)
-    print('return, volatility:', round(return_percent, 3), round(portfolio_values.std(), 3))
+    print('return, volatility:', round(return_percent, 3), round(volatility, 3))
     print('sharpe ratio:', round(sharpe_ratio[step], 3))
 
     if step == 0:
@@ -250,7 +265,7 @@ for step in range(0, 11, 1):
 
     plotly_x.append(step)
     plotly_y1.append(sharpe_ratio[step])
-    plotly_y2.append(portfolio_values.std() * 10)
+    plotly_y2.append(volatility)
 
 # output = sorted(adjusted_slope.items(), key=operator.itemgetter(1), reverse=True)
 
