@@ -22,8 +22,8 @@ import plotly.graph_objects as go
 database_filename = r'.\stock_data.sqlite3'
 pickle_filename = r'.\stock_group_df_0.0.0.pkl'
 download = True
-maximum_trading_days_needed = 300
-volatility_factor = 2
+maximum_trading_days_needed = 600
+volatility_factor = 1
 trading_days_window = 70
 
 maximum_calendar_days_needed = maximum_trading_days_needed * 365.25 / 253
@@ -147,6 +147,7 @@ if download_start_date <= download_finish_date:
 else:
     print("Not downloading.")
 
+# Debug output
 # Find actual start date
 query = '''
 select date from stock_data
@@ -157,6 +158,7 @@ cur.execute(query)
 t = cur.fetchone()
 print("Database start date:", t[0])
 
+# Debug output
 # Find actual finish date
 query = '''
 Select date From stock_data
@@ -175,12 +177,12 @@ print('Calculating indicators')
 
 sql = '''
    Select date, ticker, close From stock_data
-   Where ticker in (?, ?)
+   Where ticker in (?, ?) and date < '2020-02-14'
    Order By date Desc
    Limit ?
    '''
 sql_arguments = stock_list.copy()
-sql_arguments.append(trading_days_window * len(stock_list))
+sql_arguments.append(str(trading_days_window * len(stock_list)))
 cur.execute(sql, sql_arguments)
 stock_df = pd.DataFrame(cur.fetchall(),
                         columns=['date', 'ticker', 'close'])
@@ -190,6 +192,7 @@ con.close()
 
 print("\rResults:")
 
+# Find performance of the component stocks alone
 normalized = {}
 for stock in stock_list:
     print(stock)
@@ -211,12 +214,13 @@ for stock in stock_list:
 
     # print(normalized[stock].tail())
 
-    # performance_ratio = return_percent / (normalized[stock]['close'].std() ** volatility_factor)
     performance_ratio = return_percent / (volatility ** volatility_factor)
     print('performance ratio:', round(performance_ratio, 3))
 
+# Find the performance of portfolios in different ratios
 portfolio = {}
 performance_ratio = {}
+return_percent = {}
 plotly_x = []
 plotly_y1 = []
 plotly_y2 = []
@@ -224,10 +228,10 @@ max_value = 0
 max_step = 0
 for step in range(0, 11, 1):
 
-    print('step', step, ':', end='')
+    # print('step ', step, ': ', end='', sep='')
     investment_1_percent = step * 10
     investment_2_percent = 100 - investment_1_percent
-    print(investment_1_percent, investment_2_percent)
+    # print(investment_1_percent, investment_2_percent)
 
     portfolio[step] = \
         (normalized[stock_list[0]] * investment_1_percent / 100) + \
@@ -239,20 +243,18 @@ for step in range(0, 11, 1):
     # print('length:', len(portfolio_values))
     # print("portfolio[step]['close']:", portfolio[step]['close'])
 
-    # needs to be an annualized percent
-    return_percent = (portfolio_values[-1] - portfolio_values[0]) / portfolio_values[0]
+    # todo: needs to be an annualized percent
+    return_percent[step] = (portfolio_values[-1] - portfolio_values[0]) / portfolio_values[0]
 
-    # volatility = portfolio_values.std()
-
-    # p_df = pd.DataFrame(portfolio_values, columns=['close'])
-    # print('p_df:', p_df)
     ui_df = ta.volatility.UlcerIndex(portfolio[step]['close'], window=trading_days_window).ulcer_index()
     # print('ui_df:', ui_df)
     volatility = ui_df.iloc[-1]
 
-    performance_ratio[step] = return_percent / (volatility ** volatility_factor)
-    print('return, volatility:', round(return_percent, 3), round(volatility, 3))
-    print('performance ratio:', round(performance_ratio[step], 3))
+    performance_ratio[step] = return_percent[step] / (volatility ** volatility_factor)
+    # print('return, volatility, performance ratio:',
+    #      round(return_percent, 3),
+    #      round(volatility, 3),
+    #      round(performance_ratio[step], 3))
 
     if step == 0:
         max_value = performance_ratio[step]
@@ -266,12 +268,13 @@ for step in range(0, 11, 1):
     plotly_y2.append(volatility)
 
 # output = sorted(adjusted_slope.items(), key=operator.itemgetter(1), reverse=True)
-
-print('max value of', round(max_value, 3), 'at step:', max_step)
+print('---')
+print('Max value of', round(max_value, 3), 'at step:', max_step)
+print('return: ', return_percent[step])
 print(stock_list[0], max_step * 10, ';', stock_list[1], 100 - max_step * 10)
 
 line1 = px.line(x=plotly_x, y=plotly_y1, title='performance ratio')
-line2 = px.line(x=plotly_x, y=plotly_y2, title='std')
+line2 = px.line(x=plotly_x, y=plotly_y2, title='volatility')
 figure = go.Figure(data=line1.data + line2.data)
 figure.update_layout(title='performance')
 figure.show()
