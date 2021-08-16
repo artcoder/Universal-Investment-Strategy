@@ -169,6 +169,24 @@ cur.execute(query)
 t = cur.fetchone()
 print("Database finish date:", t[0])
 
+
+###
+# pseudocode
+# get the list of dates from the database to have trading days: ~ a year
+# get the first date: current
+#
+# loop:
+#  get 40 days starting with current
+#  calculate the best investment ratio
+#  return it and the ending date
+#  current = current +5 
+# end loop
+##
+# pretend the investment ratio was owned
+# calculate the actual return percent in the next week
+##
+# compare it to the component investments' performance over that time
+
 ####
 # Calculate indicators
 account_value = 100
