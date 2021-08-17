@@ -19,12 +19,13 @@ from sklearn.linear_model import LinearRegression
 import plotly.express as px
 import plotly.graph_objects as go
 
+stock_list = ['SPY', 'TLT']
 database_filename = r'.\stock_data.sqlite3'
 pickle_filename = r'.\stock_group_df_0.0.0.pkl'
 download = True
 maximum_trading_days_needed = 600
 volatility_factor = 1
-trading_days_window = 70
+trading_days_window = 20
 
 maximum_calendar_days_needed = maximum_trading_days_needed * 365.25 / 253
 # 253 trading days in a year
@@ -86,6 +87,7 @@ def find_download_start_date(requested_start_date):
     return download_start_date
 
 
+# downloads stock data to the database
 def download_stock_data(download_start_date, download_finish_date):
     global con
     global stock_list
@@ -127,8 +129,6 @@ def download_stock_data(download_start_date, download_finish_date):
     print("\r                                                    ")
 #
 
-
-stock_list = ['SPY', 'TLT']
 
 # detect_types is for timestamp support
 con = sqlite3.connect(database_filename,
@@ -175,10 +175,18 @@ print("Database finish date:", t[0])
 ###
 # pseudocode
 #
-# pretend the investment ratio was owned
-# calculate the actual return percent in the next week
-##
-# compare it to the component investments' performance over that time
+# get a large range from the database
+# put it in a dataframe
+# set the window_finish pointer to (the beginning of the dataframe + window size)
+# while
+#   get a subset of the dataframe for input (20 days)
+#   get a subset of the next 5 days to calculate the output
+#   call the allocation function with the input dataframe, get the allocations
+#   calculate the return using the allocation over the output dataframe
+#     show it, store it
+#   window_finish += 5 days
+#   check it ran out of database dataframe
+# end while
 
 ####
 # Calculate indicators
