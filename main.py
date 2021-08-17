@@ -156,6 +156,7 @@ limit 1
 '''
 cur.execute(query)
 t = cur.fetchone()
+database_start_date = t[0]
 print("Database start date:", t[0])
 
 # Debug output
@@ -167,21 +168,13 @@ limit 1
 '''
 cur.execute(query)
 t = cur.fetchone()
+database_finish_date = t[0]
 print("Database finish date:", t[0])
 
 
 ###
 # pseudocode
-# get the list of dates from the database to have trading days: ~ a year
-# get the first date: current
 #
-# loop:
-#  get 40 days starting with current
-#  calculate the best investment ratio
-#  return it and the ending date
-#  current = current +5 
-# end loop
-##
 # pretend the investment ratio was owned
 # calculate the actual return percent in the next week
 ##
@@ -193,106 +186,118 @@ account_value = 100
 
 print('Calculating indicators')
 
-sql = '''
-   Select date, ticker, close From stock_data
-   Where ticker in (?, ?) and date < '2020-02-14'
-   Order By date Desc
-   Limit ?
-   '''
-sql_arguments = stock_list.copy()
-sql_arguments.append(str(trading_days_window * len(stock_list)))
-cur.execute(sql, sql_arguments)
-stock_df = pd.DataFrame(cur.fetchall(),
-                        columns=['date', 'ticker', 'close'])
-stock_df = stock_df.set_index(['ticker', 'date']).sort_index()
+window_finish = database_start_date + timedelta(days=trading_days_window)
+
+while True:
+    print('---')
+    print('window_finish:', window_finish)
+
+    sql = '''
+       Select date, ticker, close From stock_data
+       Where ticker in (?, ?) and date < ?
+       Order By date Desc
+       Limit ?
+       '''
+    sql_arguments = stock_list.copy()
+    sql_arguments.append(window_finish)
+    sql_arguments.append(str(trading_days_window * len(stock_list)))
+    cur.execute(sql, sql_arguments)
+    stock_df = pd.DataFrame(cur.fetchall(),
+                            columns=['date', 'ticker', 'close'])
+    stock_df = stock_df.set_index(['ticker', 'date']).sort_index()
+
+    # print('length of stock_df:', len(stock_df) / len(stock_list))
+
+    if window_finish > database_finish_date:
+        print('at the end of the database data')
+        break
+
+    # Find performance of the component stocks alone
+    normalized = {}
+    for stock in stock_list:
+        # print(stock)
+
+        current_stock = stock_df.loc[stock]
+        # print(working_on.head())
+
+        first_day_price = current_stock.iloc[0].values[0]
+        last_day_price = current_stock.iloc[-1].values[0]
+        # print('first price, last price:', first_day_price, last_day_price)
+        # print('absolute return:', last_day_price - first_day_price)
+        return_percent = (last_day_price - first_day_price) / first_day_price
+        # print('return decimal percent:', round(return_percent, 3))
+
+        normalized[stock] = current_stock / first_day_price
+
+        ui_df = ta.volatility.UlcerIndex(current_stock['close'], window=trading_days_window).ulcer_index()
+        volatility = ui_df.iloc[-1]
+
+        # print(normalized[stock].tail())
+
+        performance_ratio = return_percent / (volatility ** volatility_factor)
+        # print('performance ratio:', round(performance_ratio, 3))
+
+    # Find the performance of portfolios in different ratios
+    portfolio = {}
+    performance_ratio = {}
+    return_percent = {}
+    plotly_x = []
+    plotly_y1 = []
+    plotly_y2 = []
+    max_value = 0
+    max_step = 0
+    for step in range(0, 11, 1):
+
+        # print('step ', step, ': ', end='', sep='')
+        investment_1_percent = step * 10
+        investment_2_percent = 100 - investment_1_percent
+        # print(investment_1_percent, investment_2_percent)
+
+        portfolio[step] = \
+            (normalized[stock_list[0]] * investment_1_percent / 100) + \
+            (normalized[stock_list[1]] * investment_2_percent / 100)
+
+        # print(portfolio[step].tail())
+
+        portfolio_values = portfolio[step]['close']
+        # print('length:', len(portfolio_values))
+        # print("portfolio[step]['close']:", portfolio[step]['close'])
+
+        # todo: needs to be an annualized percent
+        return_percent[step] = (portfolio_values[-1] - portfolio_values[0]) / portfolio_values[0]
+
+        ui_df = ta.volatility.UlcerIndex(portfolio[step]['close'], window=trading_days_window).ulcer_index()
+        # print('ui_df:', ui_df)
+        volatility = ui_df.iloc[-1]
+
+        performance_ratio[step] = return_percent[step] / (volatility ** volatility_factor)
+        # print('return, volatility, performance ratio:',
+        #      round(return_percent, 3),
+        #      round(volatility, 3),
+        #      round(performance_ratio[step], 3))
+
+        if step == 0:
+            max_value = performance_ratio[step]
+            max_step = 0
+        elif max_value < performance_ratio[step]:
+            max_value = performance_ratio[step]
+            max_step = step
+
+        plotly_x.append(step)
+        plotly_y1.append(performance_ratio[step])
+        plotly_y2.append(volatility)
+
+    # output = sorted(adjusted_slope.items(), key=operator.itemgetter(1), reverse=True)
+    # print('Max value of', round(max_value, 3), 'at step:', max_step)
+    # print('return: ', return_percent[step])
+    print(stock_list[0], max_step * 10, ';', stock_list[1], 100 - max_step * 10)
+
+    line1 = px.line(x=plotly_x, y=plotly_y1, title='performance ratio')
+    line2 = px.line(x=plotly_x, y=plotly_y2, title='volatility')
+    figure = go.Figure(data=line1.data + line2.data)
+    figure.update_layout(title='performance')
+    # figure.show()
+
+    window_finish = window_finish + timedelta(days=7)
 
 con.close()
-
-print("\rResults:")
-
-# Find performance of the component stocks alone
-normalized = {}
-for stock in stock_list:
-    print(stock)
-
-    current_stock = stock_df.loc[stock]
-    # print(working_on.head())
-
-    first_day_price = current_stock.iloc[0].values[0]
-    last_day_price = current_stock.iloc[-1].values[0]
-    # print('first price, last price:', first_day_price, last_day_price)
-    # print('absolute return:', last_day_price - first_day_price)
-    return_percent = (last_day_price - first_day_price) / first_day_price
-    print('return decimal percent:', round(return_percent, 3))
-
-    normalized[stock] = current_stock / first_day_price
-
-    ui_df = ta.volatility.UlcerIndex(current_stock['close'], window=trading_days_window).ulcer_index()
-    volatility = ui_df.iloc[-1]
-
-    # print(normalized[stock].tail())
-
-    performance_ratio = return_percent / (volatility ** volatility_factor)
-    print('performance ratio:', round(performance_ratio, 3))
-
-# Find the performance of portfolios in different ratios
-portfolio = {}
-performance_ratio = {}
-return_percent = {}
-plotly_x = []
-plotly_y1 = []
-plotly_y2 = []
-max_value = 0
-max_step = 0
-for step in range(0, 11, 1):
-
-    # print('step ', step, ': ', end='', sep='')
-    investment_1_percent = step * 10
-    investment_2_percent = 100 - investment_1_percent
-    # print(investment_1_percent, investment_2_percent)
-
-    portfolio[step] = \
-        (normalized[stock_list[0]] * investment_1_percent / 100) + \
-        (normalized[stock_list[1]] * investment_2_percent / 100)
-
-    # print(portfolio[step].tail())
-
-    portfolio_values = portfolio[step]['close']
-    # print('length:', len(portfolio_values))
-    # print("portfolio[step]['close']:", portfolio[step]['close'])
-
-    # todo: needs to be an annualized percent
-    return_percent[step] = (portfolio_values[-1] - portfolio_values[0]) / portfolio_values[0]
-
-    ui_df = ta.volatility.UlcerIndex(portfolio[step]['close'], window=trading_days_window).ulcer_index()
-    # print('ui_df:', ui_df)
-    volatility = ui_df.iloc[-1]
-
-    performance_ratio[step] = return_percent[step] / (volatility ** volatility_factor)
-    # print('return, volatility, performance ratio:',
-    #      round(return_percent, 3),
-    #      round(volatility, 3),
-    #      round(performance_ratio[step], 3))
-
-    if step == 0:
-        max_value = performance_ratio[step]
-        max_step = 0
-    elif max_value < performance_ratio[step]:
-        max_value = performance_ratio[step]
-        max_step = step
-
-    plotly_x.append(step)
-    plotly_y1.append(performance_ratio[step])
-    plotly_y2.append(volatility)
-
-# output = sorted(adjusted_slope.items(), key=operator.itemgetter(1), reverse=True)
-print('---')
-print('Max value of', round(max_value, 3), 'at step:', max_step)
-print('return: ', return_percent[step])
-print(stock_list[0], max_step * 10, ';', stock_list[1], 100 - max_step * 10)
-
-line1 = px.line(x=plotly_x, y=plotly_y1, title='performance ratio')
-line2 = px.line(x=plotly_x, y=plotly_y2, title='volatility')
-figure = go.Figure(data=line1.data + line2.data)
-figure.update_layout(title='performance')
-figure.show()
