@@ -127,100 +127,10 @@ def download_stock_data(download_start_date, download_finish_date):
 
     con.commit()
     print("\r                                                    ")
-
-
 #
 
 
-# detect_types is for timestamp support
-con = sqlite3.connect(database_filename,
-                      detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
-cur = con.cursor()
-
-create_database_if_needed()
-
-# print("in main:", start_date, type(start_date))
-download_start_date = find_download_start_date(start_date)
-
-download_finish_date = finish_date
-
-if download_start_date <= download_finish_date:
-    download_stock_data(download_start_date, download_finish_date)
-else:
-    print("Not downloading.")
-
-# Debug output
-# Find actual start date
-query = '''
-select date from stock_data
-order by date
-limit 1
-'''
-cur.execute(query)
-t = cur.fetchone()
-database_start_date = t[0]
-print("Database start date:", t[0])
-
-# Debug output
-# Find actual finish date
-query = '''
-Select date From stock_data
-Order By date Desc
-limit 1
-'''
-cur.execute(query)
-t = cur.fetchone()
-database_finish_date = t[0]
-print("Database finish date:", t[0])
-
-# Load the database table into a dataframe
-sql = '''
-   Select date, ticker, close From stock_data
-   Where ticker in (?, ?) 
-   Order By date Asc
-   '''
-sql_arguments = stock_list.copy()
-cur.execute(sql, sql_arguments)
-input_df = pd.DataFrame(cur.fetchall(),
-                        columns=['date', 'ticker', 'close'])
-con.close()
-
-###
-# pseudocode
-#
-# set the window_finish pointer to (the beginning of the dataframe + window size)
-# while
-#   call the allocation function with the input dataframe, get the allocations
-#   calculate the return using the allocation over the output dataframe
-#     show it, store it
-#   window_finish += 5 days
-#   check it ran out of database dataframe
-# end while
-
-####
-# Calculate indicators
-account_value = 100
-
-print('Calculating indicators')
-
-# window_start and window_finish are in days
-window_start = 0
-window_finish = window_start + trading_days_window
-end_of_stock_df = len(input_df)
-print('end_of_stock_df:', end_of_stock_df)
-
-while True:
-    print('---')
-    print('window_finish:', window_finish)
-
-    # length of stock_list is 2
-    stock_df = input_df.iloc[window_start * 2:window_finish * 2]
-
-    # calculate_allocation(input_df)
-
-    # def calculate_allocation(input_df)
-
-    stock_df = stock_df.set_index(['ticker', 'date']).sort_index()
+def calculate_allocation(stock_df):
 
     # Find performance of the component stocks alone
     normalized = {}
@@ -308,12 +218,100 @@ while True:
     figure = go.Figure(data=line1.data + line2.data)
     figure.update_layout(title='performance')
     # figure.show()
+#
+
+
+# detect_types is for timestamp support
+con = sqlite3.connect(database_filename,
+                      detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+cur = con.cursor()
+
+create_database_if_needed()
+
+# print("in main:", start_date, type(start_date))
+download_start_date = find_download_start_date(start_date)
+
+download_finish_date = finish_date
+
+if download_start_date <= download_finish_date:
+    download_stock_data(download_start_date, download_finish_date)
+else:
+    print("Not downloading.")
+
+
+# Debug output
+# Find actual start date
+query = '''
+select date from stock_data
+order by date
+limit 1
+'''
+cur.execute(query)
+t = cur.fetchone()
+print("Database start date:", t[0])
+
+# Debug output
+# Find actual finish date
+query = '''
+Select date From stock_data
+Order By date Desc
+limit 1
+'''
+cur.execute(query)
+t = cur.fetchone()
+print("Database finish date:", t[0])
+
+
+# Load the database table into a dataframe
+sql = '''
+   Select date, ticker, close From stock_data
+   Where ticker in (?, ?) 
+   Order By date Asc
+   '''
+sql_arguments = stock_list.copy()
+cur.execute(sql, sql_arguments)
+input_df = pd.DataFrame(cur.fetchall(),
+                        columns=['date', 'ticker', 'close'])
+con.close()
+
+####
+account_value = 100
+
+# window_start and window_finish are in days relative to dataframe rows
+window_start = 0
+window_finish = window_start + trading_days_window
+end_of_stock_df = len(input_df)
+print('end_of_stock_df:', end_of_stock_df)
+
+quit_loop = False
+while True:
+    print('---')
+    # print('window_finish:', window_finish)
+
+    # length of stock_list is 2
+    stock_df = input_df.iloc[window_start * 2:window_finish * 2]
+
+    print('last date in window:', stock_df.iloc[-1]['date'])
+
+    stock_df = stock_df.set_index(['ticker', 'date']).sort_index()
+
+    calculate_allocation(stock_df)
+    # allocation = calculate_allocation(stock_df)
+    # make future_df be from the end of stock_df to 5 days after that
+    # actual_return = calculate_forward_return( allocation, future_df )
+    # show the return compared to the component investments
 
     window_finish = window_finish + 5 * 2
     window_start = window_start + 5 * 2
 
+    if quit_loop:
+        break
+
     # MAGIC NUMBER: 2 is the length of stock_list
     if window_finish > end_of_stock_df / 2:
-        print('at the end of the database data')
-        break
+        # print('at the end of the database data')
+        # put the end of the window at the end of the stock data frame
+        window_finish = int(end_of_stock_df / 2)
+        window_start = window_finish - trading_days_window
+        quit_loop = True
 #
