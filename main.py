@@ -172,11 +172,21 @@ database_finish_date = t[0]
 print("Database finish date:", t[0])
 
 
+# Load the database table into a dataframe
+sql = '''
+   Select date, ticker, close From stock_data
+   Where ticker in (?, ?) 
+   Order By date Asc
+   '''
+sql_arguments = stock_list.copy()
+cur.execute(sql, sql_arguments)
+stock_df = pd.DataFrame(cur.fetchall(),
+                        columns=['date', 'ticker', 'close'])
+con.close()
+
 ###
 # pseudocode
 #
-# get a large range from the database
-# put it in a dataframe
 # set the window_finish pointer to (the beginning of the dataframe + window size)
 # while
 #   get a subset of the dataframe for input (20 days)
@@ -194,47 +204,38 @@ account_value = 100
 
 print('Calculating indicators')
 
-window_finish = database_start_date + timedelta(days=trading_days_window)
+# window_start and window_finish are in days
+window_start = 0
+window_finish = window_start + trading_days_window
+end_of_stock_df = len(stock_df)
 
 while True:
     print('---')
     print('window_finish:', window_finish)
 
-    sql = '''
-       Select date, ticker, close From stock_data
-       Where ticker in (?, ?) and date < ?
-       Order By date Desc
-       Limit ?
-       '''
-    sql_arguments = stock_list.copy()
-    sql_arguments.append(window_finish)
-    sql_arguments.append(str(trading_days_window * len(stock_list)))
-    cur.execute(sql, sql_arguments)
-    stock_df = pd.DataFrame(cur.fetchall(),
-                            columns=['date', 'ticker', 'close'])
-    stock_df = stock_df.set_index(['ticker', 'date']).sort_index()
+    # length of stock_list is 2
+    input_df = stock_df.iloc[window_start*2:window_finish*2]
 
-    # print('length of stock_df:', len(stock_df) / len(stock_list))
+    # calculate_allocation(input_df)
 
-    if window_finish > database_finish_date:
-        print('at the end of the database data')
-        break
+    # def calculate_allocation(input_df)
 
     # Find performance of the component stocks alone
     normalized = {}
     for stock in stock_list:
         # print(stock)
 
-        current_stock = stock_df.loc[stock]
+        current_stock = input_df[input_df['ticker'] == stock]
         # print(working_on.head())
 
-        first_day_price = current_stock.iloc[0].values[0]
-        last_day_price = current_stock.iloc[-1].values[0]
+        first_day_price = current_stock.iloc[0]['close']
+        last_day_price = current_stock.iloc[-1]['close']
         # print('first price, last price:', first_day_price, last_day_price)
         # print('absolute return:', last_day_price - first_day_price)
         return_percent = (last_day_price - first_day_price) / first_day_price
         # print('return decimal percent:', round(return_percent, 3))
-
+        
+        print('current_stock :', current_stock )
         normalized[stock] = current_stock / first_day_price
 
         ui_df = ta.volatility.UlcerIndex(current_stock['close'], window=trading_days_window).ulcer_index()
@@ -306,6 +307,11 @@ while True:
     figure.update_layout(title='performance')
     # figure.show()
 
-    window_finish = window_finish + timedelta(days=7)
 
-con.close()
+    window_finish = window_finish + 5 * 2
+    window_start = window_start + 5 * 2
+
+    if window_finish > end_of_stock_df:
+        print('at the end of the database data')
+        break
+#
