@@ -131,7 +131,6 @@ def download_stock_data(download_start_date, download_finish_date):
 
 
 def calculate_allocation(stock_df):
-
     # Find performance of the component stocks alone
     normalized = {}
     for stock in stock_list:
@@ -184,7 +183,7 @@ def calculate_allocation(stock_df):
         # print('length:', len(portfolio_values))
         # print("portfolio[step]['close']:", portfolio[step]['close'])
 
-        # todo: needs to be an annualized percent
+        # todo: change to be an annualized percent
         return_percent[step] = (portfolio_values[-1] - portfolio_values[0]) / portfolio_values[0]
 
         ui_df = ta.volatility.UlcerIndex(portfolio[step]['close'], window=trading_days_window).ulcer_index()
@@ -218,6 +217,55 @@ def calculate_allocation(stock_df):
     figure = go.Figure(data=line1.data + line2.data)
     figure.update_layout(title='performance')
     # figure.show()
+
+    return max_step * 10
+#
+
+
+def calculate_forward_return(future_df, allocation):
+
+    normalized = {}
+    return_percent = {}
+
+    if len(future_df) == 0:
+        print('future_df is empty')
+        return 0
+
+    stock_df = future_df
+
+    for stock in stock_list:
+
+        current_stock = stock_df.loc[stock]
+
+        first_day_price = current_stock.iloc[0]['close']
+        last_day_price = current_stock.iloc[-1]['close']
+        # print('first price, last price:', first_day_price, last_day_price)
+        # print('absolute return:', last_day_price - first_day_price)
+        return_percent[stock] = (last_day_price - first_day_price) / first_day_price
+        # print(stock, 'return decimal percent:', round(return_percent[stock], 3))
+
+        # print('current_stock :', current_stock)
+        normalized[stock] = current_stock / first_day_price
+
+        # print(normalized[stock].tail())
+
+    # figure the allocations
+    investment_1_percent = allocation
+    investment_2_percent = 100 - investment_1_percent
+
+    portfolio = \
+        (normalized[stock_list[0]] * investment_1_percent / 100) + \
+        (normalized[stock_list[1]] * investment_2_percent / 100)
+
+    # print(portfolio[step].tail())
+
+    portfolio_values = portfolio['close']
+    # print('length:', len(portfolio_values))
+    # print("portfolio[step]['close']:", portfolio[step]['close'])
+
+    return_percent['portfolio'] = (portfolio_values[-1] - portfolio_values[0]) / portfolio_values[0]
+
+    return return_percent
 #
 
 
@@ -237,7 +285,6 @@ if download_start_date <= download_finish_date:
     download_stock_data(download_start_date, download_finish_date)
 else:
     print("Not downloading.")
-
 
 # Debug output
 # Find actual start date
@@ -261,7 +308,6 @@ cur.execute(query)
 t = cur.fetchone()
 print("Database finish date:", t[0])
 
-
 # Load the database table into a dataframe
 sql = '''
    Select date, ticker, close From stock_data
@@ -283,6 +329,11 @@ window_finish = window_start + trading_days_window
 end_of_stock_df = len(input_df)
 print('end_of_stock_df:', end_of_stock_df)
 
+running_return =\
+    {stock_list[0]: 1,
+     stock_list[1]: 1,
+     'portfolio': 1}
+
 quit_loop = False
 while True:
     print('---')
@@ -290,16 +341,25 @@ while True:
 
     # length of stock_list is 2
     stock_df = input_df.iloc[window_start * 2:window_finish * 2]
-
-    print('last date in window:', stock_df.iloc[-1]['date'])
-
+    print('window:', stock_df.iloc[0]['date'], stock_df.iloc[-1]['date'])
     stock_df = stock_df.set_index(['ticker', 'date']).sort_index()
 
-    calculate_allocation(stock_df)
-    # allocation = calculate_allocation(stock_df)
+    allocation = calculate_allocation(stock_df)
+
     # make future_df be from the end of stock_df to 5 days after that
-    # actual_return = calculate_forward_return( allocation, future_df )
+    future_df = input_df.iloc[window_finish * 2:(window_finish + 5) * 2]
+    print('future:', future_df.iloc[0]['date'], future_df.iloc[-1]['date'])
+    future_df = future_df.set_index(['ticker', 'date']).sort_index()
+
     # show the return compared to the component investments
+    actual_return = calculate_forward_return(future_df, allocation)
+    # print(stock_list[0], ':', round(actual_return[stock_list[0]], 3))
+    # print(stock_list[1], ':', round(actual_return[stock_list[1]], 3))
+    # print('actual_return:', round(actual_return['portfolio'], 3))
+
+    running_return[stock_list[0]] = running_return[stock_list[0]] * (1 + actual_return[stock_list[0]])
+    running_return[stock_list[1]] = running_return[stock_list[1]] * (1 + actual_return[stock_list[1]])
+    running_return['portfolio'] = running_return['portfolio'] * (1 + actual_return['portfolio'])
 
     window_finish = window_finish + 5 * 2
     window_start = window_start + 5 * 2
@@ -309,9 +369,20 @@ while True:
 
     # MAGIC NUMBER: 2 is the length of stock_list
     if window_finish > end_of_stock_df / 2:
+        break
         # print('at the end of the database data')
         # put the end of the window at the end of the stock data frame
         window_finish = int(end_of_stock_df / 2)
         window_start = window_finish - trading_days_window
         quit_loop = True
 #
+print(running_return)
+s = input_df[(input_df['ticker'] == 'SPY')]
+s_first = s.iloc[0]['close']
+s_last = s.iloc[-1]['close']
+print('spy', (s_last - s_first) / s_first)
+
+t = input_df[(input_df['ticker'] == 'TLT')]
+t_first = t.iloc[0]['close']
+t_last = t.iloc[-1]['close']
+print('tlt', (t_last - t_first) / t_first)
