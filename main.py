@@ -4,18 +4,15 @@
 #
 ###
 # David Guilbeau
-# Version 0.0.0
+# Version 0.0.1
 
 import datetime
 from datetime import timedelta
-import operator
 import pandas as pd
 import yfinance as yf
 import ta
 import sqlite3
 import pickle
-import numpy as np
-from sklearn.linear_model import LinearRegression
 import plotly.express as px
 import plotly.graph_objects as go
 
@@ -23,8 +20,8 @@ stock_list = ['SPY', 'TLT']
 database_filename = r'.\stock_data.sqlite3'
 pickle_filename = r'.\stock_group_df_0.0.0.pkl'
 download = True
-maximum_trading_days_needed = 600
-volatility_factor = 1
+maximum_trading_days_needed = 1200
+volatility_factor = 2
 trading_days_window = 20
 
 maximum_calendar_days_needed = maximum_trading_days_needed * 365.25 / 253
@@ -342,7 +339,7 @@ while True:
 
     # length of stock_list is 2
     stock_df = input_df.iloc[window_start * 2:window_finish * 2]
-    print('window:', stock_df.iloc[0]['date'], stock_df.iloc[-1]['date'])
+    print('past window:', stock_df.iloc[0]['date'], stock_df.iloc[-1]['date'])
     stock_df = stock_df.set_index(['ticker', 'date']).sort_index()
 
     allocation = calculate_allocation(stock_df)
@@ -354,7 +351,7 @@ while True:
         entire_future_df = input_df.iloc[(window_finish - 1) * 2:]
         first_loop = False
 
-    # print('future:', future_df.iloc[0]['date'], future_df.iloc[-1]['date'])
+    print('future window:', future_df.iloc[0]['date'], future_df.iloc[-1]['date'])
     # print('future_df:', future_df)
     future_df = future_df.set_index(['ticker', 'date']).sort_index()
 
