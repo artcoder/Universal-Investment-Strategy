@@ -183,7 +183,7 @@ def calculate_allocation(stock_df):
         # print('length:', len(portfolio_values))
         # print("portfolio[step]['close']:", portfolio[step]['close'])
 
-        # todo: change to be an annualized percent
+        # todo: change to be an annualized percent?
         return_percent[step] = (portfolio_values[-1] - portfolio_values[0]) / portfolio_values[0]
 
         ui_df = ta.volatility.UlcerIndex(portfolio[step]['close'], window=trading_days_window).ulcer_index()
@@ -332,9 +332,10 @@ print('end_of_stock_df:', end_of_stock_df)
 running_return =\
     {stock_list[0]: 1,
      stock_list[1]: 1,
-     'portfolio': 1}
+     'portfolio'  : 1}
 
 quit_loop = False
+first_loop = True
 while True:
     print('---')
     # print('window_finish:', window_finish)
@@ -347,22 +348,28 @@ while True:
     allocation = calculate_allocation(stock_df)
 
     # make future_df be from the end of stock_df to 5 days after that
-    future_df = input_df.iloc[window_finish * 2:(window_finish + 5) * 2]
-    print('future:', future_df.iloc[0]['date'], future_df.iloc[-1]['date'])
+    future_df = input_df.iloc[(window_finish - 1) * 2:(window_finish - 1 + 5) * 2]
+
+    if first_loop:
+        entire_future_df = input_df.iloc[(window_finish - 1) * 2:]
+        first_loop = False
+
+    # print('future:', future_df.iloc[0]['date'], future_df.iloc[-1]['date'])
+    # print('future_df:', future_df)
     future_df = future_df.set_index(['ticker', 'date']).sort_index()
 
     # show the return compared to the component investments
     actual_return = calculate_forward_return(future_df, allocation)
-    # print(stock_list[0], ':', round(actual_return[stock_list[0]], 3))
-    # print(stock_list[1], ':', round(actual_return[stock_list[1]], 3))
+    print(stock_list[0], ':', round(actual_return[stock_list[0]], 3))
+    print(stock_list[1], ':', round(actual_return[stock_list[1]], 3))
     # print('actual_return:', round(actual_return['portfolio'], 3))
 
     running_return[stock_list[0]] = running_return[stock_list[0]] * (1 + actual_return[stock_list[0]])
     running_return[stock_list[1]] = running_return[stock_list[1]] * (1 + actual_return[stock_list[1]])
     running_return['portfolio'] = running_return['portfolio'] * (1 + actual_return['portfolio'])
 
-    window_finish = window_finish + 5 * 2
-    window_start = window_start + 5 * 2
+    window_finish = window_finish + 4
+    window_start = window_start + 4
 
     if quit_loop:
         break
@@ -377,12 +384,18 @@ while True:
         quit_loop = True
 #
 print(running_return)
-s = input_df[(input_df['ticker'] == 'SPY')]
+
+# debug output
+# print('entire_future_df:', entire_future_df)
+print('Actual % return:')
+s = entire_future_df[(entire_future_df['ticker'] == 'SPY')]
 s_first = s.iloc[0]['close']
+s_first_date = s.iloc[0]['date']
 s_last = s.iloc[-1]['close']
+s_last_date = s.iloc[-1]['date']
 print('spy', (s_last - s_first) / s_first)
 
-t = input_df[(input_df['ticker'] == 'TLT')]
+t = entire_future_df[(entire_future_df['ticker'] == 'TLT')]
 t_first = t.iloc[0]['close']
 t_last = t.iloc[-1]['close']
 print('tlt', (t_last - t_first) / t_first)
