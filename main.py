@@ -16,12 +16,12 @@ import pickle
 import plotly.express as px
 import plotly.graph_objects as go
 
-stock_list = ['SPY', 'TLT']
+stock_list = ['VOO', 'EDV']
 database_filename = r'.\stock_data.sqlite3'
 pickle_filename = r'.\stock_group_df_0.0.0.pkl'
 download = True
-maximum_trading_days_needed = 1200
-volatility_factor = 2
+maximum_trading_days_needed = 600
+volatility_factor = 1
 trading_days_window = 20
 
 maximum_calendar_days_needed = maximum_trading_days_needed * 365.25 / 253
@@ -318,6 +318,24 @@ input_df = pd.DataFrame(cur.fetchall(),
 con.close()
 
 ####
+# Just predict
+
+window_start = (-trading_days_window -1) * 2
+window_finish = -1
+
+stock_df = input_df.iloc[window_start:window_finish]
+print('past window:', stock_df.iloc[0]['date'], stock_df.iloc[-1]['date'])
+# print(stock_df)
+stock_df = stock_df.set_index(['ticker', 'date']).sort_index()
+
+print('prediction:')
+allocation = calculate_allocation(stock_df)
+
+# exit(0)
+
+####
+# back test
+
 account_value = 100
 
 # window_start and window_finish are in days relative to dataframe rows
@@ -331,6 +349,10 @@ running_return =\
      stock_list[1]: 1,
      'portfolio'  : 1}
 
+plotly_x = []
+plotly_y1 = []
+plotly_y2 = []
+plotly_y3 = []
 quit_loop = False
 first_loop = True
 while True:
@@ -359,11 +381,18 @@ while True:
     actual_return = calculate_forward_return(future_df, allocation)
     print(stock_list[0], ':', round(actual_return[stock_list[0]], 3))
     print(stock_list[1], ':', round(actual_return[stock_list[1]], 3))
-    # print('actual_return:', round(actual_return['portfolio'], 3))
+    print('portfolio:', round(actual_return['portfolio'], 3))
 
     running_return[stock_list[0]] = running_return[stock_list[0]] * (1 + actual_return[stock_list[0]])
     running_return[stock_list[1]] = running_return[stock_list[1]] * (1 + actual_return[stock_list[1]])
     running_return['portfolio'] = running_return['portfolio'] * (1 + actual_return['portfolio'])
+
+    ###
+    # print('future_df:', future_df)
+    plotly_x.append(future_df.loc[stock_list[0]].iloc[-1].name)
+    plotly_y1.append(running_return[stock_list[0]])
+    plotly_y2.append(running_return[stock_list[1]])
+    plotly_y3.append(running_return['portfolio'])
 
     window_finish = window_finish + 4
     window_start = window_start + 4
@@ -382,17 +411,27 @@ while True:
 #
 print(running_return)
 
+
+fig = go.Figure(data=go.Scatter(x=plotly_x, y=plotly_y1,
+                                mode='lines+markers', line_color='#202060',
+                                name=stock_list[0]))
+fig.add_trace(go.Scatter(x=plotly_x, y=plotly_y2, mode='lines+markers',
+                         line=dict(color="#008020"), name=stock_list[1]))
+fig.add_trace(go.Scatter(x=plotly_x, y=plotly_y3, mode='lines+markers',
+                         line=dict(color="#ff3344"), name='portfolio'))
+fig.show()
+
 # debug output
 # print('entire_future_df:', entire_future_df)
 print('Actual % return:')
-s = entire_future_df[(entire_future_df['ticker'] == 'SPY')]
+s = entire_future_df[(entire_future_df['ticker'] == stock_list[0])]
 s_first = s.iloc[0]['close']
 s_first_date = s.iloc[0]['date']
 s_last = s.iloc[-1]['close']
 s_last_date = s.iloc[-1]['date']
-print('spy', (s_last - s_first) / s_first)
+print(stock_list[0], (s_last - s_first) / s_first)
 
-t = entire_future_df[(entire_future_df['ticker'] == 'TLT')]
+t = entire_future_df[(entire_future_df['ticker'] == stock_list[1])]
 t_first = t.iloc[0]['close']
 t_last = t.iloc[-1]['close']
-print('tlt', (t_last - t_first) / t_first)
+print(stock_list[1], (t_last - t_first) / t_first)
